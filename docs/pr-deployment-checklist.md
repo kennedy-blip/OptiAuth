@@ -3,8 +3,8 @@
 ## PR scope and limitations
 
 - This branch has an experimental passkey interface and session-bound biometric actions, disabled by default; the eye signal never grants authorization.
-- The open PR initially covers scanner challenges; subsequent changes are local until explicitly committed and pushed. Keep the PR description aligned with actual contents.
-- `npm test` and `npm run build` cover unit tests and compilation, not real authenticators, Supabase sessions, authorization races, or database migrations. `npm run test:db` is destructive and requires a fresh isolated local test database; see README.
+- Keep each PR description aligned with its actual diff; the experimental foundations are already merged and remain off by default.
+- `npm run lint`, `npm test` and `npm run build` cover ESLint, unit tests and compilation, not real authenticators, Supabase sessions, authorization races, or database migrations. `npm run test:db` is destructive and requires a fresh isolated local test database; see README.
 - Migrations 006–007 and the separate optional SQL scripts 008–009 are staged and unapplied. Existing `user_profiles` data is not migrated. 008 creates a cluster-wide NOLOGIN role; 009 optionally schedules a job. Do not blindly execute them against an existing project.
 
 ## Before any deployment
@@ -19,3 +19,10 @@
 ## Rollback notes
 
 Take and test backups first. Disable all experimental feature flags and redeploy before schema changes. Unschedule the optional cron job by its exact ID after inspection. Schema rollback can delete sensitive records and credentials or conflict with audit controls; plan and rehearse a project-specific rollback rather than running unreviewed destructive SQL. Supabase project owners can override database triggers, so local audit tables are not tamper-proof.
+
+## Explicit production-enablement blockers
+
+- The passkey module does not protect an application route. Authenticator user verification does not prove hardware-backed credentials; attestation and AAGUID policy require separate validation.
+- Run the isolated `optiauth_test` database suite and review actual permissions, advisory locks, FK deletion and retention behavior before applying staged migrations.
+- Execute and record the physical-device WebAuthn ceremony matrix across supported desktop and mobile browsers.
+- Verify Next.js Server Action `Origin`/`Host` checks and cookie `SameSite`, `Secure`, and `HttpOnly` behavior in a staging deployment; do not assume an assertion alone prevents CSRF.

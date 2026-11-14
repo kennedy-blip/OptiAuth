@@ -11,7 +11,11 @@ export default function PasskeyManager() {
     try { const result = await listPasskeys(); if (result.ok) { setCredentials(result.credentials); setReady(true); } else { setReady(false); setError('A valid Supabase session and configured passkey service are required.'); } }
     catch { setReady(false); setError('Unable to load passkeys.'); }
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    let cancelled = false;
+    listPasskeys().then(result => { if (cancelled) return; if (result.ok) { setCredentials(result.credentials); setReady(true); } else { setReady(false); setError('A valid Supabase session and configured passkey service are required.'); } }).catch(() => { if (!cancelled) { setReady(false); setError('Unable to load passkeys.'); } });
+    return () => { cancelled = true; };
+  }, []);
   async function register() {
     setPending(true); setMessage(''); setError('');
     try {
