@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Check, RefreshCw, ScanFace, Square } from 'lucide-react';
-import { createEyeLandmarker, eyeAspectRatio, eyeCenters, extractEyeVector, horizontalGaze } from '@/lib/eyeBiometrics';
-import { advanceLiveness, createLiveness, fuseEyeVectors, randomChallenges, type LivenessState } from '@/lib/liveness';
+import { createFaceLandmarker, eyeAspectRatio, horizontalGaze } from '@/lib/faceTracking';
+import { advanceLiveness, createLiveness, fuseFaceVectors, randomChallenges, type LivenessState } from '@/lib/liveness';
+import { extractFaceVector } from '@/lib/faceBiometrics';
 import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 
 type Props = { onCapture: (embedding: number[]) => void; onReset?: () => void; disabled?: boolean };
-export default function EyeScanner({ onCapture, onReset, disabled = false }: Props) {
+export default function FaceScanner({ onCapture, onReset, disabled = false }: Props) {
   const video = useRef<HTMLVideoElement>(null), canvas = useRef<HTMLCanvasElement>(null);
   const stopNow = useRef<() => void>(() => {});
   const callback = useRef(onCapture);
@@ -34,8 +35,8 @@ export default function EyeScanner({ onCapture, onReset, disabled = false }: Pro
         const el = video.current; if (!el) { stopResources(); return; }
         el.srcObject = stream; await el.play();
         if (stopped) return;
-        setStatus('Loading eye tracker');
-        const tracker = await createEyeLandmarker();
+        setStatus('Loading face tracker');
+        const tracker = await createFaceLandmarker();
         if (stopped) { tracker.close(); return; }
         landmarker = tracker;
         setStatus('Look straight ahead');
@@ -53,7 +54,8 @@ export default function EyeScanner({ onCapture, onReset, disabled = false }: Pro
                 const ctx = c.getContext('2d');
                 if (ctx && points?.length >= 478) {
                   ctx.strokeStyle = '#b5ffb4'; ctx.lineWidth = Math.max(2, c.width / 500);
-                  for (const p of eyeCenters(points)) { ctx.beginPath(); ctx.arc(p.x*c.width, p.y*c.height, c.width*0.025, 0, Math.PI*2); ctx.stroke(); }
+                  const outline = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 152, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+                  ctx.beginPath(); outline.forEach((index, i) => { const p = points[index]; if (i === 0) ctx.moveTo(p.x*c.width, p.y*c.height); else ctx.lineTo(p.x*c.width, p.y*c.height); }); ctx.closePath(); ctx.stroke();
                 }
               }
               if (now - lightChecked > 1000) {
@@ -62,7 +64,7 @@ export default function EyeScanner({ onCapture, onReset, disabled = false }: Pro
                 const ctx = sampleCanvas.getContext('2d', { willReadFrequently: true });
                 if (ctx) { ctx.drawImage(v, 0, 0, 32, 24); const pixels = ctx.getImageData(0, 0, 32, 24).data; let sum = 0; for (let i = 0; i < pixels.length; i += 4) sum += 0.2126*pixels[i] + 0.7152*pixels[i+1] + 0.0722*pixels[i+2]; const lum = sum / (pixels.length / 4); setLighting(lum < 45 ? 'Low light' : lum > 220 ? 'Too bright' : 'Lighting looks okay'); }
               }
-              if (!points || points.length < 478) { setStatus('Position eyes in frame'); if (samples.length) { samples.length = 0; lastSample = 0; } }
+              if (!points || points.length < 478) { setStatus('Position your face in frame'); if (samples.length) { samples.length = 0; lastSample = 0; } }
               else {
                 const gaze = horizontalGaze(points), ear = eyeAspectRatio(points);
                 if (neutral === undefined && ear > 0.25) { neutral = gaze; state = createLiveness(randomChallenges(), now); }
@@ -76,16 +78,16 @@ export default function EyeScanner({ onCapture, onReset, disabled = false }: Pro
                 if (state?.phase === 'complete') {
                   setStatus(`Hold steady · capturing ${samples.length}/3`);
                   if (ear > 0.25 && Math.abs(gaze - (neutral ?? gaze)) < 0.05 && (samples.length === 0 || now - lastSample >= 400)) {
-                    samples.push(extractEyeVector(points)); lastSample = now; setStatus(`Hold steady · capturing ${samples.length}/3`);
+                    samples.push(extractFaceVector(points, v.videoWidth, v.videoHeight)); lastSample = now; setStatus(`Hold steady · capturing ${samples.length}/3`);
                     if (samples.length === 3) {
-                      const embedding = fuseEyeVectors(samples);
-                      setLocked(true); setStatus('Eye signature locked'); callback.current(embedding); stopResources(); return;
+                      const embedding = fuseFaceVectors(samples);
+                      setLocked(true); setStatus('Face signature captured'); callback.current(embedding); stopResources(); return;
                     }
                   }
                 }
               }
             }
-          } catch (e) { stopResources(); setError(e instanceof Error ? e.message : 'Eye tracking was interrupted. Please try again.'); return; }
+          } catch (e) { stopResources(); setError(e instanceof Error ? e.message : 'Face tracking was interrupted. Please try again.'); return; }
           frame = requestAnimationFrame(tick);
         };
         frame = requestAnimationFrame(tick);

@@ -27,6 +27,7 @@ test('isolated migration, RPC locking, authorization, and account deletion', asy
     const migration = await readFile('supabase/migrations/006_auxiliary_biometric_security.sql', 'utf8');
     await pool.query(migration);
     await pool.query(await readFile('supabase/migrations/007_experimental_passkeys.sql', 'utf8'));
+    await pool.query(await readFile('supabase/migrations/010_experimental_face_geometry.sql', 'utf8'));
     const ids = Array.from({ length: 8 }, () => randomUUID());
     for (const id of ids) await pool.query('insert into auth.users(id) values ($1)', [id]);
     for (const id of ids) await pool.query('select public.enroll_auxiliary_eye_template($1, $2::extensions.vector, $3, $4, $5)', [id, v1, 'Test', 'f'.repeat(64), ua]);
@@ -42,7 +43,7 @@ test('isolated migration, RPC locking, authorization, and account deletion', asy
       for (const role of ['anon', 'authenticated']) {
         await client.query(`set role ${role}`);
         try {
-          for (const table of ['user_biometrics', 'biometric_audit_logs']) {
+          for (const table of ['user_biometrics', 'biometric_audit_logs', 'user_face_biometrics', 'face_profiles']) {
             await assert.rejects(client.query(`select * from public.${table}`), (err: unknown) => (err as { code: string }).code === '42501');
             await assert.rejects(client.query(`insert into public.${table} default values`), (err: unknown) => (err as { code: string }).code === '42501');
           }
@@ -69,6 +70,17 @@ test('isolated migration, RPC locking, authorization, and account deletion', asy
         }
       }
     } finally { client.release(); }
+    // Identical dimensionality must never mix legacy eye and new face templates.
+    const faceIp = 'b'.repeat(64);
+    const eyeOnly = await pool.query('select public.verify_auxiliary_face_signature($1,$2::extensions.vector,$3,$4) result', [ids[7], v1, faceIp, ua]);
+    assert.equal(eyeOnly.rows[0].result.status, 'no_match');
+    await pool.query('select public.enroll_auxiliary_face_template($1,$2::extensions.vector,$3,$4,$5)', [ids[7], v2, 'Face test', faceIp, ua]);
+    const faceMatch = await pool.query('select public.verify_auxiliary_face_signature($1,$2::extensions.vector,$3,$4) result', [ids[7], v2, faceIp, ua]);
+    assert.equal(faceMatch.rows[0].result.status, 'matched');
+    const demoFace = await pool.query('select public.enroll_face_user($1,$2,$3,$4,$5::extensions.vector) result', ['Test User','face@example.test',null,null,v2]);
+    assert.equal(demoFace.rows[0].result, 'created');
+    const faceResult = await pool.query('select * from public.match_face_user($1::extensions.vector)', [v2]);
+    assert.equal(faceResult.rows.length, 1);
     const sessionId = randomUUID(), challenge = 'x'.repeat(43);
     const issued = await pool.query('select public.create_passkey_challenge($1,$2,$3,$4) id', [ids[7], sessionId, 'authentication', challenge]);
     const challengeId = issued.rows[0].id as string;
