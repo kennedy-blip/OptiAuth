@@ -45,3 +45,16 @@ export function extractEyeVector(points: Landmark[]): number[] {
   return features.map(value => value / norm);
 }
 export function eyeCenters(points: Landmark[]) { return [points[468], points[473]]; }
+/** Horizontal iris position in image coordinates; not a calibrated gaze tracker. */
+export function horizontalGaze(points: Landmark[]): number {
+  if (points.length < 478) throw new Error('Iris landmarks are unavailable.');
+  const ratio = (center: number, left: number, right: number) => {
+    const a = points[left], b = points[right], p = points[center];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const width2 = dx * dx + dy * dy;
+    if (width2 < 1e-10) throw new Error('Eye landmarks are too close.');
+    return ((p.x - a.x) * dx + (p.y - a.y) * dy) / width2;
+  };
+  // Both corner pairs run from lower to higher image x.
+  return (ratio(468, 33, 133) + ratio(473, 362, 263)) / 2;
+}
