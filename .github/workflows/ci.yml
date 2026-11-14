@@ -1,0 +1,50 @@
+name: CI and isolated database integration
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: optiauth_ci_only
+          POSTGRES_DB: optiauth_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d optiauth_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Disposable local service only. No live Supabase credentials or data.
+      OPTIAUTH_TEST_DATABASE_URL: postgresql://postgres:optiauth_ci_only@127.0.0.1:5432/optiauth_test
+      OPTIAUTH_ALLOW_LOCAL_DB_TESTS: 'yes'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Create Supabase-compatible role fixtures
+        run: |
+          node -e 'const {Client}=require("pg"); (async()=>{const c=new Client({connectionString:process.env.OPTIAUTH_TEST_DATABASE_URL}); await c.connect(); try {await c.query("CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN");} finally {await c.end();}})().catch(e=>{console.error(e);process.exitCode=1})'
+      # The harness checks the host and name, creates the auth.users fixture,
+      # applies migrations 006, 007 and 010, and performs destructive test writes.
+      - run: npm run test:db

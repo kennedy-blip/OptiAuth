@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { advanceLiveness, createLiveness, fuseEyeVectors } from '../src/lib/liveness';
+import { advanceLiveness, createLiveness, fuseFaceVectors } from '../src/lib/liveness';
 const vector = Array(64).fill(1/8) as number[];
 test('centroid is unit length and preserves equivalent vectors', () => {
-  const result = fuseEyeVectors([vector, vector.map(v => 2*v), vector]);
+  const result = fuseFaceVectors([vector, vector.map(v => 2*v), vector]);
   assert.equal(result.length, 64); assert.ok(Math.abs(Math.hypot(...result) - 1) < 1e-12); assert.ok(Math.abs(result[0] - 1/8) < 1e-12);
 });
 test('fusion rejects invalid or inconsistent samples', () => {
-  assert.throws(() => fuseEyeVectors([vector]));
-  assert.throws(() => fuseEyeVectors([vector, vector, Array(64).fill(0)]));
-  assert.throws(() => fuseEyeVectors([vector, vector, vector.map(v => -v)]));
-  assert.throws(() => fuseEyeVectors([vector, vector, [...vector.slice(0,63), NaN]]));
+  assert.throws(() => fuseFaceVectors([vector]));
+  assert.throws(() => fuseFaceVectors([vector, vector, Array(64).fill(0)]));
+  assert.throws(() => fuseFaceVectors([vector, vector, vector.map(v => -v)]));
+  assert.throws(() => fuseFaceVectors([vector, vector, [...vector.slice(0,63), NaN]]));
 });
 test('blink must close then open, gaze must move then return', () => {
   let s = createLiveness(['BLINK','GAZE_LEFT'], 0);

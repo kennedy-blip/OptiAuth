@@ -35,7 +35,7 @@ export function advanceLiveness(state: LivenessState, observation: Observation):
   return { ...state, index, startedAt: observation.time, blinkClosed: false, gazeAway: false, phase: index === state.sequence.length ? 'complete' : 'waiting' };
 }
 /** Average three normalized vectors and reject inconsistent samples. */
-export function fuseEyeVectors(vectors: readonly (readonly number[])[], maxDistance = 0.06): number[] {
+export function fuseFaceVectors(vectors: readonly (readonly number[])[], maxDistance = 0.06): number[] {
   if (vectors.length !== 3 || !Number.isFinite(maxDistance) || maxDistance < 0) throw new Error('Three valid samples are required.');
   const normalized = vectors.map(v => {
     if (v.length !== 64 || !v.every(Number.isFinite)) throw new Error('Invalid sample.');
