@@ -71,3 +71,9 @@ The physical-device ceremony matrix is in [`docs/passkey-test-matrix.md`](docs/p
 The optional SQL scripts in `supabase/optional/` propose a minimum-30-day audit purge, restricted to a dedicated NOLOGIN role, and a separate nightly pg_cron job. They are deliberately outside the automatic migration directory and have **not** been applied, scheduled, or database-tested. Their role creation is cluster-wide and requires elevated privileges. Before applying, review retention law and audit needs, existing role names, pg_cron privileges, backups, and the trigger/account-deletion interaction; test the full scripts transactionally in a disposable database. A database owner can override role and trigger protections. No retention setting is universally compliant.
 
 A passkey assertion does not independently prevent CSRF: protect state-changing actions with appropriate origin checks, cookie settings, and tested CSRF defenses.
+
+### GitHub Actions database checks
+
+`.github/workflows/ci.yml` runs lint, unit tests, the build, and `npm run test:db` on pull requests to `main`, pushes to `main`, and manual dispatch. It uses a disposable `pgvector/pgvector:pg16` service with a CI-only password, creates `anon`, `authenticated`, and `service_role` fixtures, and lets the harness create a minimal `auth.users` fixture and apply migrations 006 and 007. The tests exercise concurrent rate-limit attempts, grants and RLS denial, account-deletion anonymization, and single-use passkey challenges.
+
+This is an isolated PostgreSQL fixture, **not** a full Supabase stack. It does not establish real Supabase Auth/session behavior, Vercel CSRF or cookie properties, physical-authenticator behavior, retention-job correctness, or production readiness. CI results are authoritative only after the workflow actually runs on GitHub; optional retention scripts are not applied by this job.

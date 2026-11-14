@@ -49,6 +49,25 @@ test('isolated migration, RPC locking, authorization, and account deletion', asy
           await assert.rejects(client.query('select public.verify_auxiliary_eye_signature($1,$2::extensions.vector,$3,$4)', [ids[0], v2, '1'.repeat(64), ua]), (err: unknown) => (err as { code: string }).code === '42501');
         } finally { await client.query('reset role'); }
       }
+      // Exercise RLS independently of revoked grants by temporarily granting
+      // table privileges within rolled-back transactions. No policies exist,
+      // so both SELECT and INSERT must still be denied by RLS.
+      for (const role of ['anon', 'authenticated']) {
+        for (const table of ['user_biometrics', 'biometric_audit_logs']) {
+          await client.query('begin');
+          try {
+            await client.query(`grant usage on schema extensions to ${role}`);
+            await client.query(`grant select, insert on public.${table} to ${role}`);
+            await client.query(`set local role ${role}`);
+            const visible = await client.query(`select count(*)::int n from public.${table}`);
+            assert.equal(visible.rows[0].n, 0, `${role} must not see rows through RLS`);
+            const insert = table === 'user_biometrics'
+              ? client.query('insert into public.user_biometrics (user_id,eye_embedding) values ($1,$2::extensions.vector)', [ids[0], v1])
+              : client.query('insert into public.biometric_audit_logs (user_id,event_type,ip_hash,user_agent_hash) values ($1,$2,$3,$4)', [ids[0], 'ENROLL', 'e'.repeat(64), ua]);
+            await assert.rejects(insert, (err: unknown) => (err as { code: string }).code === '42501');
+          } finally { await client.query('rollback'); }
+        }
+      }
     } finally { client.release(); }
     const sessionId = randomUUID(), challenge = 'x'.repeat(43);
     const issued = await pool.query('select public.create_passkey_challenge($1,$2,$3,$4) id', [ids[7], sessionId, 'authentication', challenge]);
