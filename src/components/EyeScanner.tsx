@@ -9,10 +9,12 @@ export default function EyeScanner({ onCapture, onReset }: Props) {
   const video = useRef<HTMLVideoElement>(null), canvas = useRef<HTMLCanvasElement>(null);
   const callback = useRef(onCapture); callback.current = onCapture;
   const [attempt, setAttempt] = useState(0);
+  const [active, setActive] = useState(false);
   const [status, setStatus] = useState('Starting camera');
   const [error, setError] = useState('');
   const [locked, setLocked] = useState(false);
   useEffect(() => {
+    if (!active) return;
     let stopped = false, frame = 0, stream: MediaStream | undefined, landmarker: FaceLandmarker | undefined;
     let blinked = false, lastTime = -1;
     setStatus('Starting camera'); setError(''); setLocked(false);
@@ -55,11 +57,13 @@ export default function EyeScanner({ onCapture, onReset }: Props) {
                 setStatus('Blink to verify liveness');
               }
             }
-          } catch { setError('Eye tracking was interrupted. Please try again.'); return; }
+          } catch { stream?.getTracks().forEach(t => t.stop()); landmarker?.close(); landmarker = undefined; setError('Eye tracking was interrupted. Please try again.'); return; }
           frame = requestAnimationFrame(tick);
         };
         frame = requestAnimationFrame(tick);
       } catch (e) {
+        stream?.getTracks().forEach(t => t.stop());
+        landmarker?.close(); landmarker = undefined;
         if (stopped) return;
         const name = e instanceof Error ? e.name : '';
         setError(name === 'NotAllowedError' ? 'Camera permission denied. Allow camera access in your browser settings and try again.' : name === 'NotFoundError' ? 'No camera found. Connect a camera and try again.' : e instanceof Error ? e.message : 'Could not start the camera.');
@@ -67,8 +71,9 @@ export default function EyeScanner({ onCapture, onReset }: Props) {
     }
     void start();
     return () => { stopped = true; cancelAnimationFrame(frame); stream?.getTracks().forEach(t => t.stop()); landmarker?.close(); if (video.current) video.current.srcObject = null; };
-  }, [attempt]);
+  }, [attempt, active]);
   const reset = () => { onReset?.(); setAttempt(n => n+1); };
+  if (!active) return <div className="scanner-start"><Camera size={24}/><strong>Ready when you are</strong><p>Your browser will ask for camera permission. Video stays on this device.</p><button type="button" onClick={() => setActive(true)}>Enable camera</button></div>;
   return <div className="scanner">
     <div className="camera-view">
       <video ref={video} playsInline muted autoPlay className="camera-video" />
