@@ -9,8 +9,9 @@ type Props = { onCapture: (embedding: number[]) => void; onReset?: () => void; d
 export default function EyeScanner({ onCapture, onReset, disabled = false }: Props) {
   const video = useRef<HTMLVideoElement>(null), canvas = useRef<HTMLCanvasElement>(null);
   const stopNow = useRef<() => void>(() => {});
-  const callback = useRef(onCapture); callback.current = onCapture;
-  const resetCallback = useRef(onReset); resetCallback.current = onReset;
+  const callback = useRef(onCapture);
+  const resetCallback = useRef(onReset);
+  useEffect(() => { callback.current = onCapture; resetCallback.current = onReset; }, [onCapture, onReset]);
   const [attempt, setAttempt] = useState(0), [active, setActive] = useState(false);
   const [status, setStatus] = useState('Starting camera'), [error, setError] = useState('');
   const [locked, setLocked] = useState(false), [progress, setProgress] = useState(0), [lighting, setLighting] = useState('Checking lighting');
@@ -19,7 +20,7 @@ export default function EyeScanner({ onCapture, onReset, disabled = false }: Pro
     let stopped = false, frame = 0, stream: MediaStream | undefined, landmarker: FaceLandmarker | undefined;
     let lastTime = -1, neutral: number | undefined, state: LivenessState | undefined, lastSample = 0, lightChecked = 0;
     const samples: number[][] = [];
-    setStatus('Starting camera'); setError(''); setLocked(false); setProgress(0); setLighting('Checking lighting');
+    const videoElement = video.current;
     const stopResources = () => { cancelAnimationFrame(frame); stream?.getTracks().forEach(t => t.stop()); stream = undefined; landmarker?.close(); landmarker = undefined; };
     stopNow.current = () => { stopped = true; stopResources(); };
     const onVisibility = () => { if (document.hidden) { stopped = true; stopResources(); resetCallback.current?.(); setActive(false); } };
@@ -95,10 +96,11 @@ export default function EyeScanner({ onCapture, onReset, disabled = false }: Pro
       }
     }
     void start();
-    return () => { stopNow.current = () => {}; stopped = true; document.removeEventListener('visibilitychange', onVisibility); stopResources(); if (video.current) video.current.srcObject = null; };
+    return () => { stopNow.current = () => {}; stopped = true; document.removeEventListener('visibilitychange', onVisibility); stopResources(); if (videoElement) videoElement.srcObject = null; };
   }, [attempt, active]);
-  const reset = () => { stopNow.current(); onReset?.(); setAttempt(n => n+1); };
+  const resetScannerState = () => { setStatus('Starting camera'); setError(''); setLocked(false); setProgress(0); setLighting('Checking lighting'); };
+  const reset = () => { stopNow.current(); onReset?.(); resetScannerState(); setAttempt(n => n+1); };
   const stop = () => { stopNow.current(); onReset?.(); setActive(false); };
-  if (!active) return <div className="scanner-start"><Camera size={24}/><strong>Ready when you are</strong><p>Your browser will ask for camera permission. Video stays on this device.</p><button type="button" disabled={disabled} onClick={() => setActive(true)}>Enable camera &amp; start check</button></div>;
+  if (!active) return <div className="scanner-start"><Camera size={24}/><strong>Ready when you are</strong><p>Your browser will ask for camera permission. Video stays on this device.</p><button type="button" disabled={disabled} onClick={() => { resetScannerState(); setActive(true); }}>Enable camera &amp; start check</button></div>;
   return <div className="scanner"><div className="camera-view"><video ref={video} playsInline muted autoPlay className="camera-video"/><canvas ref={canvas} className="camera-canvas"/><div className="scan-corners"><i/><i/><i/><i/></div><div className="camera-top"><span><span className="live-dot"/> {locked ? 'CAPTURED' : 'LIVE CAMERA'}</span><ScanFace size={18}/></div>{!error && <div className="camera-prompt"><span className="prompt-icon">{locked ? <Check size={18}/> : <ScanFace size={18}/>}</span><div><strong>{status}</strong><small>{lighting} · {Math.round(progress * 100)}% of prompts complete</small></div><progress aria-label="Challenge progress" max={1} value={progress}/></div>}{error && <div className="camera-error"><CameraOff size={26}/><strong>Scan unavailable</strong><p>{error}</p><button type="button" onClick={reset}>Try again</button></div>}</div><div className="scanner-footer"><span><Camera size={15}/> {locked ? 'Capture complete' : 'Camera stays on this device'}</span><div className="scanner-controls"><button type="button" onClick={reset}><RefreshCw size={14}/> Retake</button><button type="button" onClick={stop}><Square size={14}/> Stop camera</button></div></div></div>;
 }
